@@ -62,35 +62,6 @@ def calculate_class_weights(train_labels):
     # クラスの重みを辞書型に変換
     return dict(enumerate(class_weights))
 
-def plot_confusion_matrix_and_accuracy(y_true, y_pred, classes):
-    import seaborn as sns
-    import matplotlib.pyplot as plt
-    from sklearn.metrics import confusion_matrix
-
-    # Confusion matrixの計算
-    cm = confusion_matrix(y_true, y_pred, labels=classes)
-
-    # ヒートマップとしてプロット
-    plt.figure(figsize=(10, 10))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
-    plt.title('Confusion Matrix')
-    plt.ylabel('Actual')
-    plt.xlabel('Predicted')
-    plt.show()
-
-    # 各クラスごとの正確さと最も間違えやすいクラスを表示
-    print("\nClass Accuracy and Most Common Errors:")
-    for i, class_name in enumerate(classes):
-        accuracy = cm[i, i] / cm[i, :].sum()
-        print(f"{class_name}: Accuracy: {accuracy * 100:.2f}%")
-        
-        # 最も間違えやすいクラスを特定
-        error_indices = cm[i, :].argsort()[-2:-1] if accuracy < 1 else []
-        for error_index in error_indices:
-            error_rate = cm[i, error_index] / cm[i, :].sum()
-            error_class = classes[error_index]
-            print(f"    Most common error: Mistaken for {error_class} ({error_rate * 100:.2f}%)")
-
 def solution(x_test_df, train_df):
     import tensorflow as tf
     failure_types = list(train_df['failureType'].unique())
