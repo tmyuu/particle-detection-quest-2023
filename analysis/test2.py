@@ -45,21 +45,21 @@ def preprocess_map2(train_df, normalize_map):
     flipped_horizontally = np.flip(train_maps, axis=2)
     train_maps = np.concatenate((train_maps, flipped_horizontally), axis=0)
 
-    # 2. 画像を垂直方向に反転
-    flipped_vertically = np.flip(train_maps, axis=1)
-    train_maps = np.concatenate((train_maps, flipped_vertically), axis=0)
+    # # 2. 画像を垂直方向に反転
+    # flipped_vertically = np.flip(train_maps, axis=1)
+    # train_maps = np.concatenate((train_maps, flipped_vertically), axis=0)
 
-    # # 3. 画像を90度回転
-    # rotated_90 = np.rot90(train_maps, k=1, axes=(1, 2))
-    # train_maps = np.concatenate((train_maps, rotated_90), axis=0)
+    # 3. 画像を90度回転
+    rotated_90 = np.rot90(train_maps, k=1, axes=(1, 2))
+    train_maps = np.concatenate((train_maps, rotated_90), axis=0)
 
-    # 4. 画像を180度回転
-    rotated_180 = np.rot90(train_maps, k=2, axes=(1, 2))
-    train_maps = np.concatenate((train_maps, rotated_180), axis=0)
+    # # 4. 画像を180度回転
+    # rotated_180 = np.rot90(train_maps, k=2, axes=(1, 2))
+    # train_maps = np.concatenate((train_maps, rotated_180), axis=0)
 
-    # # 5. 画像を270度回転
-    # rotated_270 = np.rot90(train_maps, k=3, axes=(1, 2))
-    # train_maps = np.concatenate((train_maps, rotated_270), axis=0)
+    # 5. 画像を270度回転
+    rotated_270 = np.rot90(train_maps, k=3, axes=(1, 2))
+    train_maps = np.concatenate((train_maps, rotated_270), axis=0)
 
     # データの形状を変更
     train_maps = train_maps.reshape(train_maps.shape + (1,))
