@@ -26,10 +26,21 @@ def preprocess_map(train_df, normalize_map):
     # データの正規化
     normalized_train_maps = np.array([normalize_map(x) for x in train_df['waferMap']])
 
-    # データ拡張（90度回転、水平反転など）
-    normalized_train_maps = np.concatenate((normalized_train_maps, np.rot90(normalized_train_maps, k=2, axes=(1, 2))), axis=0)
-    normalized_train_maps = np.concatenate((normalized_train_maps, np.rot90(normalized_train_maps, k=1, axes=(1, 2))), axis=0)
-    normalized_train_maps = np.concatenate((normalized_train_maps, np.swapaxes(normalized_train_maps, 1, 2)), axis=0)
+    # 1. 画像を水平方向に反転
+    flipped_horizontally = np.flip(normalized_train_maps, axis=2)
+    normalized_train_maps = np.concatenate((normalized_train_maps, flipped_horizontally), axis=0)
+
+    # 2. 画像を垂直方向に反転
+    flipped_vertically = np.flip(normalized_train_maps, axis=1)
+    normalized_train_maps = np.concatenate((normalized_train_maps, flipped_vertically), axis=0)
+    
+    # 3. 画像を90度回転
+    rotated_90 = np.rot90(normalized_train_maps, k=1, axes=(1, 2))
+    normalized_train_maps = np.concatenate((normalized_train_maps, rotated_90), axis=0)
+
+    # 4. 画像を180度回転
+    rotated_180 = np.rot90(normalized_train_maps, k=2, axes=(1, 2))
+    normalized_train_maps = np.concatenate((normalized_train_maps, rotated_180), axis=0)
 
     # データの形状を変更
     normalized_train_maps = normalized_train_maps.reshape(normalized_train_maps.shape + (1,))
@@ -44,8 +55,12 @@ def create_model(input_shape, num_classes):
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
         tf.keras.layers.Conv2D(32, activation=tf.nn.relu, kernel_size=(3,3), padding='same'),
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+        tf.keras.layers.Conv2D(64, activation=tf.nn.relu, kernel_size=(3,3), padding='same'),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(512, activation=tf.nn.relu),
+        tf.keras.layers.Dense(1024, activation=tf.nn.relu),
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(256, activation=tf.nn.relu),
         tf.keras.layers.Dropout(0.2),
         tf.keras.layers.Dense(128, activation=tf.nn.relu),
         tf.keras.layers.Dropout(0.2),
@@ -53,32 +68,31 @@ def create_model(input_shape, num_classes):
     ])
     return model
 
-def calculate_class_weights(train_labels):
-    from sklearn.utils.class_weight import compute_class_weight
-    # クラスの重みを計算
-    class_weights = compute_class_weight(class_weight='balanced', 
-                                         classes=np.unique(train_labels), 
-                                         y=train_labels)
-    # クラスの重みを辞書型に変換
-    return dict(enumerate(class_weights))
+# def calculate_class_weights(train_labels):
+#     from sklearn.utils.class_weight import compute_class_weight
+#     # クラスの重みを計算
+#     class_weights = compute_class_weight(class_weight='balanced', 
+#                                          classes=np.unique(train_labels), 
+#                                          y=train_labels)
+#     # クラスの重みを辞書型に変換
+#     return dict(enumerate(class_weights))
 
 def solution(x_test_df, train_df):
     import tensorflow as tf
     failure_types = list(train_df['failureType'].unique())
     
-
     # 前処理
     normalized_train_maps = preprocess_map(train_df, normalize_map)
     # データ拡張を行う場合はtrain_labelsを変更する必要がある
-    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 8)
-
-    class_weights = calculate_class_weights(train_labels)
+    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 16)
+    # クラスの重みを計算
+    # class_weights = calculate_class_weights(train_labels)
 
     model = create_model(normalized_train_maps[0].shape, len(failure_types))
     model.compile(optimizer='adam',
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
-    model.fit(normalized_train_maps, train_labels, epochs=2, class_weight=class_weights)
+    model.fit(normalized_train_maps, train_labels, epochs=2)
 
     normalized_test_maps = np.array([normalize_map(x) for x in x_test_df['waferMap']])
     normalized_test_maps = normalized_test_maps.reshape(normalized_test_maps.shape + (1,))
