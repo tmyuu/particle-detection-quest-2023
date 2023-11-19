@@ -6,7 +6,7 @@ def normalize_map(map):
     from PIL import Image
 
     # リサイズ後のサイズを指定
-    resize_shape = (18, 18)
+    resize_shape = (20, 20)
     
     # マップの次元を取得
     len_y, len_x = map.shape
@@ -49,17 +49,17 @@ def preprocess_map2(train_df, normalize_map):
     flipped_vertically = np.flip(train_maps, axis=1)
     train_maps = np.concatenate((train_maps, flipped_vertically), axis=0)
 
-    # 3. 画像を90度回転
-    rotated_90 = np.rot90(train_maps, k=1, axes=(1, 2))
-    train_maps = np.concatenate((train_maps, rotated_90), axis=0)
+    # # 3. 画像を90度回転
+    # rotated_90 = np.rot90(train_maps, k=1, axes=(1, 2))
+    # train_maps = np.concatenate((train_maps, rotated_90), axis=0)
 
-    # # 4. 画像を180度回転
-    # rotated_180 = np.rot90(train_maps, k=2, axes=(1, 2))
-    # train_maps = np.concatenate((train_maps, rotated_180), axis=0)
+    # 4. 画像を180度回転
+    rotated_180 = np.rot90(train_maps, k=2, axes=(1, 2))
+    train_maps = np.concatenate((train_maps, rotated_180), axis=0)
 
-    # 5. 画像を270度回転
-    rotated_270 = np.rot90(train_maps, k=3, axes=(1, 2))
-    train_maps = np.concatenate((train_maps, rotated_270), axis=0)
+    # # 5. 画像を270度回転
+    # rotated_270 = np.rot90(train_maps, k=3, axes=(1, 2))
+    # train_maps = np.concatenate((train_maps, rotated_270), axis=0)
 
     # データの形状を変更
     train_maps = train_maps.reshape(train_maps.shape + (1,))
@@ -83,8 +83,6 @@ def create_model(input_shape, num_classes):
         tf.keras.layers.Flatten(),
         tf.keras.layers.Dense(512, activation='relu'),
         tf.keras.layers.Dropout(0.2),
-        tf.keras.layers.Dense(256, activation='relu'),
-        tf.keras.layers.Dropout(0.5),
         tf.keras.layers.Dense(256, activation='relu'),
         tf.keras.layers.Dropout(0.5),
 
@@ -112,7 +110,7 @@ def solution(x_test_df, train_df):
     # 前処理
     test_maps = preprocess_map1(x_test_df, normalize_map)
     train_maps = preprocess_map2(train_df, normalize_map)
-    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 16)
+    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 8)
 
     # クラスの重みを計算
     class_weights = calculate_class_weights(train_labels)

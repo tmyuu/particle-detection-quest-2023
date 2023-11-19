@@ -19,28 +19,17 @@ def normalize_map(map):
     # 0の値を置換
     map[y_indices, x_indices] = map[(y_indices + y_add) % len_y, (x_indices + x_add) % len_x]
     # リサイズし、1を減算
-    resized_map = Image.fromarray(map - 1.0).resize(resize_shape)
+    resized_map = Image.fromarray(map - 1).resize(resize_shape)
     return np.asarray(resized_map)
 
 def preprocess_map(train_df, normalize_map):
     # データの正規化
     normalized_train_maps = np.array([normalize_map(x) for x in train_df['waferMap']])
 
-    # 1. 画像を水平方向に反転
-    flipped_horizontally = np.flip(normalized_train_maps, axis=2)
-    normalized_train_maps = np.concatenate((normalized_train_maps, flipped_horizontally), axis=0)
-
-    # 2. 画像を垂直方向に反転
-    flipped_vertically = np.flip(normalized_train_maps, axis=1)
-    normalized_train_maps = np.concatenate((normalized_train_maps, flipped_vertically), axis=0)
-    
-    # 3. 画像を90度回転
-    rotated_90 = np.rot90(normalized_train_maps, k=1, axes=(1, 2))
-    normalized_train_maps = np.concatenate((normalized_train_maps, rotated_90), axis=0)
-
-    # 4. 画像を180度回転
-    rotated_180 = np.rot90(normalized_train_maps, k=2, axes=(1, 2))
-    normalized_train_maps = np.concatenate((normalized_train_maps, rotated_180), axis=0)
+    # データ拡張（90度回転、水平反転など）
+    normalized_train_maps = np.concatenate((normalized_train_maps, np.rot90(normalized_train_maps, k=2, axes=(1, 2))), axis=0)
+    normalized_train_maps = np.concatenate((normalized_train_maps, np.rot90(normalized_train_maps, k=1, axes=(1, 2))), axis=0)
+    normalized_train_maps = np.concatenate((normalized_train_maps, np.swapaxes(normalized_train_maps, 1, 2)), axis=0)
 
     # データの形状を変更
     normalized_train_maps = normalized_train_maps.reshape(normalized_train_maps.shape + (1,))
@@ -55,12 +44,8 @@ def create_model(input_shape, num_classes):
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
         tf.keras.layers.Conv2D(32, activation=tf.nn.relu, kernel_size=(3,3), padding='same'),
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
-        tf.keras.layers.Conv2D(64, activation=tf.nn.relu, kernel_size=(3,3), padding='same'),
-        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(1024, activation=tf.nn.relu),
-        tf.keras.layers.Dropout(0.2),
-        tf.keras.layers.Dense(256, activation=tf.nn.relu),
+        tf.keras.layers.Dense(512, activation=tf.nn.relu),
         tf.keras.layers.Dropout(0.2),
         tf.keras.layers.Dense(128, activation=tf.nn.relu),
         tf.keras.layers.Dropout(0.2),
@@ -68,41 +53,28 @@ def create_model(input_shape, num_classes):
     ])
     return model
 
-# def calculate_class_weights(train_labels):
-#     from sklearn.utils.class_weight import compute_class_weight
-#     # クラスの重みを計算
-#     class_weights = compute_class_weight(class_weight='balanced', 
-#                                          classes=np.unique(train_labels), 
-#                                          y=train_labels)
-#     # クラスの重みを辞書型に変換
-#     return dict(enumerate(class_weights))
+import numpy as np
+from sklearn.utils.class_weight import compute_class_weight
 
-def solution(x_test_df, train_df):
-    import tensorflow as tf
-    failure_types = list(train_df['failureType'].unique())
+def calculate_class_weights(train_labels):
+    # クラスの重みを自動計算
+    unique_classes = np.unique(train_labels)
+    class_weights = compute_class_weight(
+        class_weight='balanced', 
+        classes=unique_classes, 
+        y=train_labels
+    )
+
+    # Edge-Ring（インデックス3）とScratch（インデックス6）の重みを増加
+    class_weights[3] *= 2.0  # より多くの重みを加える
+    class_weights[6] *= 2.0  # より多くの重みを加える
     
-    # 前処理
-    normalized_train_maps = preprocess_map(train_df, normalize_map)
-    # データ拡張を行う場合はtrain_labelsを変更する必要がある
-    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 16)
-    # クラスの重みを計算
-    # class_weights = calculate_class_weights(train_labels)
+    # 重みの上限を設定する
+    class_weights = np.clip(class_weights, None, 10)  # 重みの最大値を10に制限
 
-    model = create_model(normalized_train_maps[0].shape, len(failure_types))
-    model.compile(optimizer='adam',
-                  loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-                  metrics=['accuracy'])
-    model.fit(normalized_train_maps, train_labels, epochs=2)
+    # インデックスと重みをマッピングした辞書を返す
+    return {class_index: weight for class_index, weight in enumerate(class_weights)}
 
-    normalized_test_maps = np.array([normalize_map(x) for x in x_test_df['waferMap']])
-    normalized_test_maps = normalized_test_maps.reshape(normalized_test_maps.shape + (1,))
-
-    predictions = tf.nn.softmax(model.predict(normalized_test_maps)).numpy()
-    answer = [failure_types[x.argmax()] for x in predictions]
-
-    return pd.DataFrame({'failureType': answer}, index=x_test_df.index)
-
-# 以下は編集しないでください
 def plot_confusion_matrix_and_accuracy(y_true, y_pred, classes):
     import seaborn as sns
     import matplotlib.pyplot as plt
@@ -132,6 +104,32 @@ def plot_confusion_matrix_and_accuracy(y_true, y_pred, classes):
             error_class = classes[error_index]
             print(f"    Most common error: Mistaken for {error_class} ({error_rate * 100:.2f}%)")
 
+def solution(x_test_df, train_df):
+    import tensorflow as tf
+    failure_types = list(train_df['failureType'].unique())
+    
+    # 前処理
+    normalized_train_maps = preprocess_map(train_df, normalize_map)
+    # データ拡張を行う場合はtrain_labelsを変更する必要がある
+    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 8)
+
+    class_weights = calculate_class_weights(train_labels)
+
+    model = create_model(normalized_train_maps[0].shape, len(failure_types))
+    model.compile(optimizer='adam',
+                  loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                  metrics=['accuracy'])
+    model.fit(normalized_train_maps, train_labels, epochs=2, class_weight=class_weights)
+
+    normalized_test_maps = np.array([normalize_map(x) for x in x_test_df['waferMap']])
+    normalized_test_maps = normalized_test_maps.reshape(normalized_test_maps.shape + (1,))
+
+    predictions = tf.nn.softmax(model.predict(normalized_test_maps)).numpy()
+    answer = [failure_types[x.argmax()] for x in predictions]
+
+    return pd.DataFrame({'failureType': answer}, index=x_test_df.index)
+
+# 以下は編集しないでください
 # データのインポート
 df=pd.read_pickle("../work/input/LSWMD_25519.pkl")
 
