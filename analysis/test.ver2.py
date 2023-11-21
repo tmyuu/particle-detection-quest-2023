@@ -52,9 +52,9 @@ def preprocess_map(df, normalize_map):
     rotated_180 = np.rot90(train_maps, k=2, axes=(1, 2))
     train_maps = np.concatenate((train_maps, rotated_180), axis=0)
 
-    # 5. 画像を270度回転
-    rotated_270 = np.rot90(train_maps, k=3, axes=(1, 2))
-    train_maps = np.concatenate((train_maps, rotated_270), axis=0)
+    # # 5. 画像を270度回転
+    # rotated_270 = np.rot90(train_maps, k=3, axes=(1, 2))
+    # train_maps = np.concatenate((train_maps, rotated_270), axis=0)
 
     # データの形状を変更
     train_maps = train_maps.reshape(train_maps.shape + (1,))
@@ -97,7 +97,7 @@ def create_model(hp):
 
     # 密結合層3
     model.add(tf.keras.layers.Dense(hp.Int('dense_3_units', min_value=16, max_value=256, step=64), activation='relu'))
-    model.add(tf.keras.layers.Dropout(hp.Float('dropout_2', min_value=0.0, max_value=0.5, step=0.1)))
+    model.add(tf.keras.layers.Dropout(hp.Float('dropout_3', min_value=0.0, max_value=0.5, step=0.1)))
 
     # 出力層
     model.add(tf.keras.layers.Dense(num_classes))
@@ -161,7 +161,7 @@ def solution(x_test_df, train_df):
 
     test_maps = preprocess_map(x_test_df, normalize_map)
     train_maps = preprocess_map(train_df, normalize_map)
-    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 32)
+    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 16)
 
     class_weights = calculate_class_weights(train_labels)
 
