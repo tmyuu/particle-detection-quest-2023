@@ -6,7 +6,7 @@ def normalize_map(map):
     from PIL import Image
 
     # リサイズ後のサイズを指定
-    resize_shape = (28, 28)
+    resize_shape = (36, 36)
     
     # マップの次元を取得
     len_y, len_x = map.shape
@@ -40,9 +40,9 @@ def preprocess_map(df, normalize_map):
     # flipped_horizontally = np.flip(train_maps, axis=2)
     # train_maps = np.concatenate((train_maps, flipped_horizontally), axis=0)
 
-    # 2. 画像を垂直方向に反転
-    flipped_vertically = np.flip(train_maps, axis=1)
-    train_maps = np.concatenate((train_maps, flipped_vertically), axis=0)
+    # # 2. 画像を垂直方向に反転
+    # flipped_vertically = np.flip(train_maps, axis=1)
+    # train_maps = np.concatenate((train_maps, flipped_vertically), axis=0)
 
     # 3. 画像を90度回転
     rotated_90 = np.rot90(train_maps, k=1, axes=(1, 2))
@@ -65,7 +65,7 @@ def preprocess_map(df, normalize_map):
 def create_model(hp):
     import tensorflow as tf
 
-    input_shape = (28, 28, 1)
+    input_shape = (36, 36, 1)
     num_classes = 8
 
     model = tf.keras.models.Sequential()
@@ -132,7 +132,7 @@ def solution(x_test_df, train_df):
 
     test_maps = preprocess_map(x_test_df, normalize_map)
     train_maps = preprocess_map(train_df, normalize_map)
-    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 16)
+    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 8)
 
     class_weights = calculate_class_weights(train_labels)
 
