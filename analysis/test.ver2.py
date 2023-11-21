@@ -80,11 +80,6 @@ def create_model(hp):
                                      3, activation='relu', padding='same'))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=2))
 
-    # 畳み込みブロック3
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_3_filter', min_value=48, max_value=64, step=16),
-                                     3, activation='relu', padding='same'))
-    model.add(tf.keras.layers.MaxPooling2D(pool_size=2))
-
     # フラット化
     model.add(tf.keras.layers.Flatten())
 
@@ -97,7 +92,7 @@ def create_model(hp):
     model.add(tf.keras.layers.Dropout(hp.Float('dropout_2', min_value=0.0, max_value=0.5, step=0.1)))
 
     # 密結合層3
-    model.add(tf.keras.layers.Dense(hp.Int('dense_2_units', min_value=16, max_value=256, step=64), activation='relu'))
+    model.add(tf.keras.layers.Dense(hp.Int('dense_3_units', min_value=16, max_value=256, step=64), activation='relu'))
     model.add(tf.keras.layers.Dropout(hp.Float('dropout_2', min_value=0.0, max_value=0.5, step=0.1)))
 
     # 出力層
@@ -178,11 +173,11 @@ def solution(x_test_df, train_df):
         project_name='wafermap'
     )
 
-    tuner.search(train_maps, train_labels, epochs=10, validation_split=0.1)
+    tuner.search(train_maps, train_labels, epochs=3, validation_split=0.1)
 
     best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
     model = tuner.hypermodel.build(best_hps)
-    model.fit(train_maps, train_labels, epochs=10, class_weight=class_weights)
+    model.fit(train_maps, train_labels, epochs=3, class_weight=class_weights)
 
     # 各予測結果の平均を計算
     test_logits = np.mean(model.predict(test_maps).reshape(-1, len(x_test_df['waferMap']), len(failure_types)), axis=0)
