@@ -40,9 +40,9 @@ def preprocess_map(df, normalize_map):
     flipped_horizontally = np.flip(train_maps, axis=2)
     train_maps = np.concatenate((train_maps, flipped_horizontally), axis=0)
 
-    # # 2. 画像を垂直方向に反転
-    # flipped_vertically = np.flip(train_maps, axis=1)
-    # train_maps = np.concatenate((train_maps, flipped_vertically), axis=0)
+    # 2. 画像を垂直方向に反転
+    flipped_vertically = np.flip(train_maps, axis=1)
+    train_maps = np.concatenate((train_maps, flipped_vertically), axis=0)
 
     # 3. 画像を90度回転
     rotated_90 = np.rot90(train_maps, k=1, axes=(1, 2))
@@ -52,9 +52,9 @@ def preprocess_map(df, normalize_map):
     rotated_180 = np.rot90(train_maps, k=2, axes=(1, 2))
     train_maps = np.concatenate((train_maps, rotated_180), axis=0)
 
-    # # 5. 画像を270度回転
-    # rotated_270 = np.rot90(train_maps, k=3, axes=(1, 2))
-    # train_maps = np.concatenate((train_maps, rotated_270), axis=0)
+    # 5. 画像を270度回転
+    rotated_270 = np.rot90(train_maps, k=3, axes=(1, 2))
+    train_maps = np.concatenate((train_maps, rotated_270), axis=0)
 
     # データの形状を変更
     train_maps = train_maps.reshape(train_maps.shape + (1,))
@@ -71,16 +71,16 @@ def create_model(hp):
     model = tf.keras.models.Sequential()
 
     # 畳み込みブロック1
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_1_filter', min_value=16, max_value=24, step=16),
+    model.add(tf.keras.layers.Conv2D(hp.Int('conv_1_filter', min_value=16, max_value=32, step=16),
                                      3, activation='relu', padding='same', input_shape=input_shape))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=2, padding='same'))
 
     # 畳み込みブロック2
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_2_filter', min_value=24, max_value=32, step=16),
+    model.add(tf.keras.layers.Conv2D(hp.Int('conv_2_filter', min_value=32, max_value=64, step=16),
                                      3, activation='relu', padding='same'))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=2))
     # 畳み込みブロック3
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_3_filter', min_value=24, max_value=32, step=16),
+    model.add(tf.keras.layers.Conv2D(hp.Int('conv_3_filter', min_value=32, max_value=128, step=16),
                                      3, activation='relu', padding='same'))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=2))
 
@@ -100,7 +100,7 @@ def create_model(hp):
     model.add(tf.keras.layers.Dropout(hp.Float('dropout_2', min_value=0.0, max_value=0.5, step=0.1)))
 
     # 出力層
-    model.add(tf.keras.layers.Dense(num_classes)
+    model.add(tf.keras.layers.Dense(num_classes))
 
     # モデルのコンパイル
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
@@ -145,7 +145,7 @@ def calculate_class_weights(train_labels):
                                          classes=np.unique(train_labels), 
                                          y=train_labels)
     # Locの重みを増加
-    class_weights[4] *= 1.5
+    # class_weights[4] *= 1.5
 
     # クラスの重みを辞書型に変換
     return dict(enumerate(class_weights))
@@ -161,7 +161,7 @@ def solution(x_test_df, train_df):
 
     test_maps = preprocess_map(x_test_df, normalize_map)
     train_maps = preprocess_map(train_df, normalize_map)
-    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 8)
+    train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 32)
 
     class_weights = calculate_class_weights(train_labels)
 
@@ -177,11 +177,11 @@ def solution(x_test_df, train_df):
         project_name='wafermap'
     )
 
-    tuner.search(train_maps, train_labels, epochs=6, validation_split=0.1)
+    tuner.search(train_maps, train_labels, epochs=10, validation_split=0.1)
 
     best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
     model = tuner.hypermodel.build(best_hps)
-    model.fit(train_maps, train_labels, epochs=6, class_weight=class_weights)
+    model.fit(train_maps, train_labels, epochs=10, class_weight=class_weights)
 
     # 各予測結果の平均を計算
     test_logits = np.mean(model.predict(test_maps).reshape(-1, len(x_test_df['waferMap']), len(failure_types)), axis=0)
