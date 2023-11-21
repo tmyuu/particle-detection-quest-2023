@@ -62,49 +62,65 @@ def preprocess_map(df, normalize_map):
     return train_maps
 
 
+import keras_tuner as kt
+
 def create_model(hp):
     import tensorflow as tf
 
     input_shape = (36, 36, 1)
     num_classes = 8
 
-    model = tf.keras.models.Sequential()
+    model = tf.keras.models.Sequential([
+        # 畳み込みブロック1
+        tf.keras.layers.Conv2D(
+            hp.Int('conv_1_filter', min_value=16, max_value=64, step=16),
+            hp.Choice('conv_1_kernel', values=[3, 5]),
+            activation='relu', padding='same', input_shape=input_shape),
+        tf.keras.layers.MaxPooling2D(pool_size=2, padding='same'),
 
-    # 畳み込みブロック1
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_1_filter', min_value=16, max_value=16, step=16),
-                                     3, activation='relu', padding='same', input_shape=input_shape))
-    model.add(tf.keras.layers.MaxPooling2D(pool_size=2, padding='same'))
+        # 畳み込みブロック2
+        tf.keras.layers.Conv2D(
+            hp.Int('conv_2_filter', min_value=32, max_value=128, step=32),
+            hp.Choice('conv_2_kernel', values=[3, 5]),
+            activation='relu', padding='same'),
+        tf.keras.layers.MaxPooling2D(pool_size=2),
 
-    # 畳み込みブロック2
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_2_filter', min_value=32, max_value=32, step=16),
-                                     3, activation='relu', padding='same'))
-    model.add(tf.keras.layers.MaxPooling2D(pool_size=2))
+        # 畳み込みブロック3
+        tf.keras.layers.Conv2D(
+            hp.Int('conv_3_filter', min_value=64, max_value=256, step=64),
+            hp.Choice('conv_3_kernel', values=[3, 5]),
+            activation='relu', padding='same'),
+        tf.keras.layers.MaxPooling2D(pool_size=2),
 
-    # 畳み込みブロック3
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_3_filter', min_value=128, max_value=128, step=16),
-                                     3, activation='relu', padding='same'))
-    model.add(tf.keras.layers.MaxPooling2D(pool_size=2))
+        # フラット化
+        tf.keras.layers.Flatten(),
 
-    # フラット化
-    model.add(tf.keras.layers.Flatten())
+        # 密結合層1
+        tf.keras.layers.Dense(
+            hp.Int('dense_1_units', min_value=256, max_value=1024, step=256),
+            activation=tf.nn.relu),
+        tf.keras.layers.Dropout(
+            hp.Float('dropout_1', min_value=0, max_value=0.5, step=0.1)),
 
-    # 密結合層1
-    model.add(tf.keras.layers.Dense(hp.Int('dense_1_units', min_value=256, max_value=512, step=64), activation='relu'))
-    model.add(tf.keras.layers.Dropout(hp.Float('dropout_1', min_value=0.0, max_value=0.5, step=0.1)))
+        # 密結合層2
+        tf.keras.layers.Dense(
+            hp.Int('dense_2_units', min_value=256, max_value=1024, step=256),
+            activation=tf.nn.relu),
+        tf.keras.layers.Dropout(
+            hp.Float('dropout_2', min_value=0, max_value=0.5, step=0.1)),
 
-    # 密結合層2
-    model.add(tf.keras.layers.Dense(hp.Int('dense_2_units', min_value=256, max_value=512, step=64), activation='relu'))
-    model.add(tf.keras.layers.Dropout(hp.Float('dropout_2', min_value=0.0, max_value=0.5, step=0.1)))
+        # 密結合層3
+        tf.keras.layers.Dense(
+            hp.Int('dense_3_units', min_value=256, max_value=1024, step=256),
+            activation=tf.nn.relu),
+        tf.keras.layers.Dropout(
+            hp.Float('dropout_3', min_value=0, max_value=0.5, step=0.1)),
 
-    # 密結合層3
-    model.add(tf.keras.layers.Dense(hp.Int('dense_3_units', min_value=16, max_value=256, step=64), activation='relu'))
-    model.add(tf.keras.layers.Dropout(hp.Float('dropout_3', min_value=0.0, max_value=0.5, step=0.1)))
+        # 出力層
+        tf.keras.layers.Dense(num_classes),
+    ])
 
-    # 出力層
-    model.add(tf.keras.layers.Dense(num_classes))
-
-    # モデルのコンパイル
-    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer='adam', loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True), metrics=['accuracy'])
 
     return model
 
@@ -136,23 +152,26 @@ def solution(x_test_df, train_df):
 
     class_weights = calculate_class_weights(train_labels)
 
-    tuner = kt.RandomSearch(
+    tuner = kt.Hyperband(
         create_model,
         objective='val_accuracy',
-        max_trials=100,
-        directory='tuner',
-        project_name='wafermap'
+        max_epochs=10,
+        factor=3,
+        directory='my_dir',
+        project_name='wafermap_tuning',
+        overwrite=True
     )
 
-    tuner.search(train_maps, train_labels, epochs=10, validation_split=0.1)
 
-    best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
+    tuner.search(train_maps, train_labels, epochs=10, validation_split=0.2, class_weight=class_weights)
+
+    best_hps = tuner.get_best_hyperparameters()[0]
     model = tuner.hypermodel.build(best_hps)
-    model.fit(train_maps, train_labels, epochs=10, class_weight=class_weights, validation_split=0.2)
-
-    # 各予測結果の平均を計算
-    test_logits = np.mean(model.predict(test_maps).reshape(-1, len(x_test_df['waferMap']), len(failure_types)), axis=0)
     
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=2, restore_best_weights=True)
+    model.fit(train_maps, train_labels, epochs=10, class_weight=class_weights, callbacks=[early_stopping], validation_split=0.2)
+
+    test_logits = np.mean(model.predict(test_maps).reshape(-1, len(x_test_df['waferMap']), len(failure_types)), axis=0)
     predictions = tf.nn.softmax(test_logits).numpy()
     answer = [failure_types[x.argmax()] for x in predictions]
 
