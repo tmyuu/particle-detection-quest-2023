@@ -173,7 +173,7 @@ def solution(x_test_df, train_df):
     tuner = kt.RandomSearch(
         create_model,
         objective='val_accuracy',
-        max_trials=30,
+        max_trials=5,
         directory='tuner',
         project_name='wafermap'
     )
