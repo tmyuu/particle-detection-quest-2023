@@ -126,6 +126,7 @@ def solution(x_test_df, train_df):
     import os
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
     import tensorflow as tf
+    import keras_tuner as kt
 
     failure_types = list(train_df['failureType'].unique())
 
@@ -147,7 +148,7 @@ def solution(x_test_df, train_df):
 
     best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
     model = tuner.hypermodel.build(best_hps)
-    model.fit(train_maps, train_labels, epochs=10, class_weight=class_weights, validation_split=0.1)
+    model.fit(train_maps, train_labels, epochs=10, class_weight=class_weights, validation_split=0.2)
 
     # 各予測結果の平均を計算
     test_logits = np.mean(model.predict(test_maps).reshape(-1, len(x_test_df['waferMap']), len(failure_types)), axis=0)
