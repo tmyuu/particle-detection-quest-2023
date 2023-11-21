@@ -71,17 +71,17 @@ def create_model(hp):
     model = tf.keras.models.Sequential()
 
     # 畳み込みブロック1
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_1_filter', min_value=16, max_value=32, step=16),
+    model.add(tf.keras.layers.Conv2D(hp.Int('conv_1_filter', min_value=16, max_value=16, step=16),
                                      3, activation='relu', padding='same', input_shape=input_shape))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=2, padding='same'))
 
     # 畳み込みブロック2
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_2_filter', min_value=32, max_value=64, step=16),
+    model.add(tf.keras.layers.Conv2D(hp.Int('conv_2_filter', min_value=32, max_value=32, step=16),
                                      3, activation='relu', padding='same'))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=2))
 
     # 畳み込みブロック3
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_3_filter', min_value=32, max_value=128, step=16),
+    model.add(tf.keras.layers.Conv2D(hp.Int('conv_3_filter', min_value=128, max_value=128, step=16),
                                      3, activation='relu', padding='same'))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=2))
 
@@ -116,7 +116,7 @@ def calculate_class_weights(train_labels):
                                          classes=np.unique(train_labels), 
                                          y=train_labels)
     # Locの重みを増加
-    # class_weights[4] *= 1.5
+    class_weights[4] *= 1.5
 
     # クラスの重みを辞書型に変換
     return dict(enumerate(class_weights))
@@ -139,7 +139,7 @@ def solution(x_test_df, train_df):
     tuner = kt.RandomSearch(
         create_model,
         objective='val_accuracy',
-        max_trials=10,
+        max_trials=100,
         directory='tuner',
         project_name='wafermap'
     )
