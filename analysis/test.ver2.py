@@ -6,7 +6,7 @@ def normalize_map(map):
     from PIL import Image
 
     # リサイズ後のサイズを指定
-    resize_shape = (32, 32)
+    resize_shape = (28, 28)
     
     # マップの次元を取得
     len_y, len_x = map.shape
@@ -65,7 +65,7 @@ def preprocess_map(df, normalize_map):
 def create_model(hp):
     import tensorflow as tf
 
-    input_shape = (32, 32, 1)
+    input_shape = (28, 28, 1)
     num_classes = 8
 
     model = tf.keras.models.Sequential()
@@ -96,7 +96,7 @@ def create_model(hp):
     model.add(tf.keras.layers.Dense(hp.Int('dense_2_units', min_value=256, max_value=512, step=64), activation='relu'))
     model.add(tf.keras.layers.Dropout(hp.Float('dropout_2', min_value=0.0, max_value=0.5, step=0.1)))
 
-    # 密結合層2
+    # 密結合層3
     model.add(tf.keras.layers.Dense(hp.Int('dense_2_units', min_value=16, max_value=256, step=64), activation='relu'))
     model.add(tf.keras.layers.Dropout(hp.Float('dropout_2', min_value=0.0, max_value=0.5, step=0.1)))
 
@@ -146,7 +146,7 @@ def calculate_class_weights(train_labels):
                                          classes=np.unique(train_labels), 
                                          y=train_labels)
     # Locの重みを増加
-    # class_weights[4] *= 1.5
+    class_weights[4] *= 1.5
 
     # クラスの重みを辞書型に変換
     return dict(enumerate(class_weights))
