@@ -76,7 +76,11 @@ def create_model(hp):
     model.add(tf.keras.layers.MaxPooling2D(pool_size=2, padding='same'))
 
     # 畳み込みブロック2
-    model.add(tf.keras.layers.Conv2D(hp.Int('conv_2_filter', min_value=24, max_value=48, step=16),
+    model.add(tf.keras.layers.Conv2D(hp.Int('conv_2_filter', min_value=24, max_value=32, step=16),
+                                     3, activation='relu', padding='same'))
+    model.add(tf.keras.layers.MaxPooling2D(pool_size=2))
+    # 畳み込みブロック3
+    model.add(tf.keras.layers.Conv2D(hp.Int('conv_3_filter', min_value=24, max_value=32, step=16),
                                      3, activation='relu', padding='same'))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=2))
 
@@ -96,7 +100,7 @@ def create_model(hp):
     model.add(tf.keras.layers.Dropout(hp.Float('dropout_2', min_value=0.0, max_value=0.5, step=0.1)))
 
     # 出力層
-    model.add(tf.keras.layers.Dense(num_classes, activation='softmax'))
+    model.add(tf.keras.layers.Dense(num_classes)
 
     # モデルのコンパイル
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
@@ -168,16 +172,16 @@ def solution(x_test_df, train_df):
     tuner = kt.RandomSearch(
         create_model,
         objective='val_accuracy',
-        max_trials=5,
+        max_trials=10,
         directory='tuner',
         project_name='wafermap'
     )
 
-    tuner.search(train_maps, train_labels, epochs=3, validation_split=0.1)
+    tuner.search(train_maps, train_labels, epochs=6, validation_split=0.1)
 
     best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
     model = tuner.hypermodel.build(best_hps)
-    model.fit(train_maps, train_labels, epochs=3, class_weight=class_weights)
+    model.fit(train_maps, train_labels, epochs=6, class_weight=class_weights)
 
     # 各予測結果の平均を計算
     test_logits = np.mean(model.predict(test_maps).reshape(-1, len(x_test_df['waferMap']), len(failure_types)), axis=0)
