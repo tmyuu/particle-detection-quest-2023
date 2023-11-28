@@ -62,68 +62,115 @@ def preprocess_map(df, normalize_map):
 
     return train_maps
 
+from tensorflow.keras.layers import Conv2D, Dense, BatchNormalization, Activation, MaxPool2D, GlobalAveragePooling2D, Add
+from tensorflow.keras import Model, Input
+import tensorflow as tf
 
-def residual_block(x, filters, kernel_size=3, stride=1, conv_shortcut=True, name=None):
-    from tensorflow.keras.layers import Conv2D, BatchNormalization, ReLU, Add
+class ResidualBlock(Model):
+    def __init__(self, channel_in = 64, channel_out = 256):
+        super().__init__()
 
-    # Shortcut path
-    shortcut = x
-    if conv_shortcut:  # If the shortcut needs to be resized
-        shortcut = Conv2D(4 * filters, 1, strides=stride, name=name + '_0_conv')(x)
-        shortcut = BatchNormalization(name=name + '_0_bn')(shortcut)
+        channel = channel_out // 4
 
-    # Main path
-    x = Conv2D(filters, kernel_size, padding='same', strides=stride, name=name + '_1_conv')(x)
-    x = BatchNormalization(name=name + '_1_bn')(x)
-    x = ReLU(name=name + '_1_relu')(x)
+        self.conv1 = Conv2D(channel, kernel_size = (1, 1), padding = "same")
+        self.bn1 = BatchNormalization()
+        self.av1 = Activation(tf.nn.relu)
+        self.conv2 = Conv2D(channel, kernel_size = (3, 3), padding = "same")
+        self.bn2 = BatchNormalization()
+        self.av2 = Activation(tf.nn.relu)
+        self.conv3 = Conv2D(channel_out, kernel_size = (1, 1), padding = "same")
+        self.bn3 = BatchNormalization()
+        self.shortcut = self._shortcut(channel_in, channel_out)
+        self.add = Add()
+        self.av3 = Activation(tf.nn.relu)
 
-    x = Conv2D(filters, kernel_size, padding='same', name=name + '_2_conv')(x)
-    x = BatchNormalization(name=name + '_2_bn')(x)
-    x = ReLU(name=name + '_2_relu')(x)
+    def call(self, x):
+        h = self.conv1(x)
+        h = self.bn1(h)
+        h = self.av1(h)
+        h = self.conv2(h)
+        h = self.bn2(h)
+        h = self.av2(h)
+        h = self.conv3(h)
+        h = self.bn3(h)
+        shortcut = self.shortcut(x)
+        h = self.add([h, shortcut])
+        y = self.av3(h)
+        return y
 
-    x = Conv2D(4 * filters, 1, name=name + '_3_conv')(x)
-    x = BatchNormalization(name=name + '_3_bn')(x)
+    def _shortcut(self, channel_in, channel_out):
+        if channel_in == channel_out:
+            return lambda x : x
+        else:
+            return self._projection(channel_out)
 
-    # Merge paths
-    x = Add(name=name + '_add')([shortcut, x])
-    x = ReLU(name=name + '_out')(x)
-    return x
+    def _projection(self, channel_out):
+        return Conv2D(channel_out, kernel_size = (1, 1), padding = "same")
+    
+
+class ResNet50(Model):
+    def __init__(self, input_shape, output_dim):
+        super().__init__()                
+
+        self._layers = [
+            Conv2D(64, input_shape = input_shape, kernel_size = (3, 3), strides=(2, 2), padding = "same"),
+            BatchNormalization(),
+            Activation(tf.nn.relu),
+            MaxPool2D(pool_size = (3, 3), strides = (2, 2), padding = "same"),
+            ResidualBlock(64, 256),
+            [
+                ResidualBlock(256, 256) for _ in range(2)                
+            ],
+            Conv2D(32, kernel_size = (1, 1), strides=(2, 2)),
+            [
+                ResidualBlock(32, 32) for _ in range(4)                
+            ],
+            Conv2D(64, kernel_size = (1, 1), strides=(2, 2)),
+            [
+                ResidualBlock(64, 64) for _ in range(6)                
+            ],
+            Conv2D(128, kernel_size = (1, 1), strides=(2, 2)),
+            [
+                ResidualBlock(128, 128) for _ in range(3)
+            ],
+            GlobalAveragePooling2D(),
+            Dense(1000, activation = tf.nn.relu),
+            Dense(output_dim, activation = tf.nn.softmax)
+        ]
+
+    def call(self, x):
+        for layer in self._layers:
+            if isinstance(layer, list):
+                for l in layer:
+                    x = l(x)    
+            else:
+                x = layer(x)
+        return x
 
 
-# 新しいモデル作成関数
+
 def create_residual_model(input_shape, num_classes):
-    from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, ReLU, GlobalAveragePooling2D, Dense
-    from tensorflow.keras.models import Model
-
-    inputs = Input(shape=input_shape)
-    x = Conv2D(64, 7, strides=2, padding='same')(inputs)
-    x = BatchNormalization()(x)
-    x = ReLU()(x)
-
-    # Add residual blocks
-    x = residual_block(x, 64, stride=2, conv_shortcut=True, name='res_block1')
-    # Add more blocks as needed...
-
-    # Global Average Pooling and output layer
-    x = GlobalAveragePooling2D()(x)
-    outputs = Dense(num_classes, activation='softmax')(x)
-
-    # Create the model
-    model = Model(inputs, outputs)
+    model = ResNet50(input_shape=input_shape, output_dim=num_classes)
     return model
 
 
 def calculate_class_weights(train_labels):
     from sklearn.utils.class_weight import compute_class_weight
     # クラスの重みを計算
-    class_weights = compute_class_weight(class_weight='balanced', 
-                                         classes=np.unique(train_labels), 
-                                         y=train_labels)
+    class_weights = compute_class_weight(
+        class_weight='balanced', 
+        classes=np.unique(train_labels),
+        y=train_labels)
     # クラスの重みを辞書型に変換
     return dict(enumerate(class_weights))
 
 
 def solution(x_test_df, train_df):
+    import os
+    import tensorflow as tf
+
+    os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
+
     failure_types = list(train_df['failureType'].unique())
     test_maps = preprocess_map(x_test_df, normalize_map)
     train_maps = preprocess_map(train_df, normalize_map)
@@ -135,10 +182,10 @@ def solution(x_test_df, train_df):
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     
     # EarlyStoppingコールバックの設定
-    early_stopping = EarlyStopping(monitor='val_loss', patience=2, restore_best_weights=True)
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=2, restore_best_weights=True)
     
     # モデルのトレーニング
-    model.fit(train_maps, train_labels, epochs=7, class_weight=class_weights, callbacks=[early_stopping], validation_split=0.2)
+    model.fit(train_maps, train_labels, epochs=10, class_weight=class_weights, callbacks=[early_stopping], validation_split=0.2)
 
     # 各予測結果の平均を計算
     test_logits = np.mean(model.predict(test_maps).reshape(-1, len(x_test_df['waferMap']), len(failure_types)), axis=0)
