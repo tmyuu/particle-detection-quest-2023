@@ -58,15 +58,28 @@ def initialize_cnn(input_shape, failure_types_classes, n_layers, conv2d_filters,
 def objective(trial, train_df, x_test_df):
     # 畳み込み層の数を決定
     n_layers = trial.suggest_int('n_layers', 1, 5)
+    print(f"Number of convolutional layers: {n_layers}")
 
     # 各畳み込み層のフィルタ数を決定
     conv2d_filters = [trial.suggest_categorical(f'conv2d_filter_{i}', [8, 16, 32, 64, 128]) for i in range(n_layers)]
+    print(f"Convolutional layers filters: {conv2d_filters}")
 
-    # その他のハイパーパラメータ
-    n_dense_layers = trial.suggest_int('n_dense_layers', 1, 3)
-    n_dropout_layers = trial.suggest_int('n_dropout_layers', 1, 3)
+    # DenseレイヤーとDropoutレイヤーの数を決定
+    n_dense_layers = trial.suggest_int('n_dense_layers', 1, 5)
+    n_dropout_layers = trial.suggest_int('n_dropout_layers', 1, 5)
+    print(f"Number of dense layers: {n_dense_layers}, Number of dropout layers: {n_dropout_layers}")
+
+    # 各Denseレイヤーのユニット数を決定
+    dense_units = [trial.suggest_categorical(f'dense_unit_{i}', [16, 32, 64, 128, 256, 512]) for i in range(n_dense_layers)]
+    print(f"Dense layers units: {dense_units}")
+
+    # 各Dropoutレイヤーのドロップアウト率を決定
+    dropout_rates = [trial.suggest_uniform(f'dropout_rate_{i}', 0.0, 0.5) for i in range(n_dropout_layers)]
+    print(f"Dropout layers rates: {dropout_rates}")
+
+    # 学習率を決定
     learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-2)
-
+    print(f"Learning rate: {learning_rate}")
 
     # モデルの初期化
     failure_types = list(train_df['failureType'].unique())
