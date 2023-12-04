@@ -110,7 +110,7 @@ x_test_df = test_df.drop(columns=['failureType'])
 
 # Optunaのstudyを作成し、目的関数を最適化
 study = optuna.create_study(direction='maximize')
-study.optimize(lambda trial: objective(trial, train_df, x_test_df), n_trials=1)  # トライアル数は例
+study.optimize(lambda trial: objective(trial, train_df, x_test_df), n_trials=100)  # トライアル数は例
 
 print("Best trial:")
 print(study.best_trial)
