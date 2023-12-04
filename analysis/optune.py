@@ -31,49 +31,56 @@ def calculate_class_weights(train_labels):
                                          classes=np.unique(train_labels), 
                                          y=train_labels)
     return dict(enumerate(class_weights))
+
+def initialize_cnn(input_shape, failure_types_classes, n_layers, conv2d_filters, n_dense_layers, dense_units, n_dropout_layers, dropout_rates):
+    model = tf.keras.models.Sequential()
+
+    # 畳み込み層の追加
+    for i in range(n_layers):
+        if i == 0:
+            model.add(tf.keras.layers.Conv2D(conv2d_filters[i], 3, activation='relu', padding='same', input_shape=input_shape))
+        else:
+            model.add(tf.keras.layers.Conv2D(conv2d_filters[i], 3, activation='relu', padding='same'))
+        model.add(tf.keras.layers.MaxPooling2D(pool_size=2, strides=2))
+
+    model.add(tf.keras.layers.Flatten())
+
+    # DenseレイヤーとDropoutレイヤーの追加
+    for i in range(max(n_dense_layers, n_dropout_layers)):
+        if i < n_dense_layers:
+            model.add(tf.keras.layers.Dense(dense_units[i], activation='relu'))
+        if i < n_dropout_layers:
+            model.add(tf.keras.layers.Dropout(dropout_rates[i]))
+
+    model.add(tf.keras.layers.Dense(failure_types_classes))
+    return model
+
 def objective(trial, train_df, x_test_df):
-    # ハイパーパラメータの範囲を設定
-    conv2d_filter1 = trial.suggest_categorical('conv2d_filter1', [8, 16, 32, 64, 128])
-    conv2d_filter2 = trial.suggest_categorical('conv2d_filter2', [8, 16, 32, 64, 128])
-    conv2d_filter3 = trial.suggest_categorical('conv2d_filter3', [8, 16, 32, 64, 128])
-    dense_unit1 = trial.suggest_categorical('dense_unit1', [64, 128, 256, 512, 1024])
-    dense_unit2 = trial.suggest_categorical('dense_unit2', [64, 128, 256, 512, 1024])
-    dense_unit3 = trial.suggest_categorical('dense_unit3', [64, 128, 256, 512, 1024])
-    dropout_rate1 = trial.suggest_uniform('dropout_rate1', 0.0, 0.5)
-    dropout_rate2 = trial.suggest_uniform('dropout_rate2', 0.0, 0.5)
-    dropout_rate3 = trial.suggest_uniform('dropout_rate3', 0.0, 0.5)
+    # 畳み込み層の数を決定
+    n_layers = trial.suggest_int('n_layers', 1, 5)
+
+    # 各畳み込み層のフィルタ数を決定
+    conv2d_filters = [trial.suggest_categorical(f'conv2d_filter_{i}', [8, 16, 32, 64, 128]) for i in range(n_layers)]
+
+    # その他のハイパーパラメータ
+    n_dense_layers = trial.suggest_int('n_dense_layers', 1, 3)
+    n_dropout_layers = trial.suggest_int('n_dropout_layers', 1, 3)
     learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-2)
 
-    # モデルの初期化
-    def initialize_cnn(input_shape, failure_types_classes):
-        model = tf.keras.models.Sequential([
-            tf.keras.layers.Conv2D(conv2d_filter1, 3, activation='relu', padding='same', input_shape=input_shape),
-            tf.keras.layers.MaxPooling2D(pool_size=2, strides=2),
-            tf.keras.layers.Conv2D(conv2d_filter2 * 2, 3, activation='relu', padding='same'),
-            tf.keras.layers.MaxPooling2D(pool_size=2, strides=2),
-            tf.keras.layers.Conv2D(conv2d_filter3 * 4, 3, activation='relu', padding='same'),
-            tf.keras.layers.MaxPooling2D(pool_size=2, strides=2),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(dense_unit1, activation=tf.nn.relu),
-            tf.keras.layers.Dropout(dropout_rate1),
-            tf.keras.layers.Dense(dense_unit2, activation=tf.nn.relu),
-            tf.keras.layers.Dropout(dropout_rate2),
-            tf.keras.layers.Dense(dense_unit3, activation=tf.nn.relu),
-            tf.keras.layers.Dropout(dropout_rate3),
-            tf.keras.layers.Dense(failure_types_classes),
-        ])
-        return model
 
-    # データの前処理
+    # モデルの初期化
     failure_types = list(train_df['failureType'].unique())
     train_maps = preprocess_map(train_df, resize_map)
     train_labels = np.array([failure_types.index(x) for x in train_df['failureType']] * 8)
     failure_types_classes = len(failure_types)
     input_shape = train_maps[0].shape
     class_weights = calculate_class_weights(train_labels)
+    # 各Denseレイヤーのユニット数を決定
+    dense_units = [trial.suggest_categorical(f'dense_unit_{i}', [16, 32, 64, 128, 256, 512]) for i in range(n_dense_layers)]
+        # 各Dropoutレイヤーのドロップアウト率を決定
+    dropout_rates = [trial.suggest_uniform(f'dropout_rate_{i}', 0.0, 0.5) for i in range(n_dropout_layers)]
 
-    # モデルのコンパイル
-    model = initialize_cnn(input_shape, failure_types_classes)
+    model = initialize_cnn(input_shape, failure_types_classes, n_layers, conv2d_filters, n_dense_layers, dense_units, n_dropout_layers, dropout_rates)
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     model.compile(optimizer=optimizer, 
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True), 
@@ -119,24 +126,19 @@ def solution(x_test_df, train_df):
     # Optunaで見つけた最適なパラメータを使用
     best_params = study.best_params
 
-    def initialize_cnn(input_shape, failure_types_classes):
-        model = tf.keras.models.Sequential([
-            tf.keras.layers.Conv2D(best_params['conv2d_filter1'], 3, activation='relu', padding='same', input_shape=input_shape),
-            tf.keras.layers.MaxPooling2D(pool_size=2, strides=2),
-            tf.keras.layers.Conv2D(best_params['conv2d_filter2'] * 2, 3, activation='relu', padding='same'),
-            tf.keras.layers.MaxPooling2D(pool_size=2, strides=2),
-            tf.keras.layers.Conv2D(best_params['conv2d_filter3'] * 4, 3, activation='relu', padding='same'),
-            tf.keras.layers.MaxPooling2D(pool_size=2, strides=2),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(best_params['dense_unit1'], activation=tf.nn.relu),
-            tf.keras.layers.Dropout(best_params['dropout_rate1']),
-            tf.keras.layers.Dense(best_params['dense_unit2'], activation=tf.nn.relu),
-            tf.keras.layers.Dropout(best_params['dropout_rate2']),
-            tf.keras.layers.Dense(best_params['dense_unit3'], activation=tf.nn.relu),
-            tf.keras.layers.Dropout(best_params['dropout_rate3']),
-            tf.keras.layers.Dense(failure_types_classes),
-        ])
-        return model
+    # 畳み込み層の数を取得
+    n_layers = best_params['n_layers']
+    # 各畳み込み層のフィルタ数を取得
+    conv2d_filters = [best_params[f'conv2d_filter_{i}'] for i in range(n_layers)]
+
+    # DenseレイヤーとDropoutレイヤーの数を取得
+    n_dense_layers = best_params['n_dense_layers']
+    n_dropout_layers = best_params['n_dropout_layers']
+
+    # 各Denseレイヤーのユニット数を取得
+    dense_units = [best_params[f'dense_unit_{i}'] for i in range(n_dense_layers)]
+    # 各Dropoutレイヤーのドロップアウト率を取得
+    dropout_rates = [best_params[f'dropout_rate_{i}'] for i in range(n_dropout_layers)]
 
     failure_types = list(train_df['failureType'].unique())
     train_maps = preprocess_map(train_df, resize_map)
@@ -145,7 +147,8 @@ def solution(x_test_df, train_df):
     input_shape = train_maps[0].shape
     class_weights = calculate_class_weights(train_labels)
 
-    model = initialize_cnn(input_shape, failure_types_classes)
+    # initialize_cnn関数に渡す
+    model = initialize_cnn(input_shape, failure_types_classes, n_layers, conv2d_filters, n_dense_layers, dense_units, n_dropout_layers, dropout_rates)
     optimizer = tf.keras.optimizers.Adam(learning_rate=best_params['learning_rate'])
     model.compile(optimizer=optimizer, 
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True), 
